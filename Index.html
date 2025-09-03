@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Monetag Rewarded Ads — Demo</title>
+
+  <!-- Monetag SDK (zone 9817616) -->
+  <!-- নোট: hosting এ গেলে https:// ব্যবহার করো, browser mixed-content এ সমস্যা হলে -->
+  <script src="//libtl.com/sdk.js" data-zone="9817616" data-sdk="show_9817616"></script>
+
+  <style>
+    :root {
+      --bg1: #071124;
+      --bg2: #0b3b59;
+      --accent: #00e676;
+      --muted: #bfc8cf;
+    }
+    * { box-sizing: border-box; }
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      background: linear-gradient(135deg,var(--bg1),var(--bg2));
+      color: #fff;
+      padding:20px;
+    }
+    .card{
+      width:100%;
+      max-width:520px;
+      background: rgba(255,255,255,0.03);
+      border-radius:14px;
+      padding:22px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    h1 { margin:0 0 12px 0; font-size:20px; color:var(--accent); }
+    p { margin:0 0 14px 0; color:var(--muted); font-size:14px; }
+    .btn {
+      display:inline-block;
+      width:100%;
+      padding:12px 14px;
+      margin:8px 0;
+      border-radius:10px;
+      background: linear-gradient(90deg,var(--accent), #00c853);
+      border:none;
+      color:#000;
+      font-weight:700;
+      cursor:pointer;
+      font-size:15px;
+      transition:transform .12s ease, opacity .12s ease;
+    }
+    .btn:active{ transform: translateY(2px); }
+    .btn[disabled]{
+      opacity:.45;
+      cursor:not-allowed;
+      transform:none;
+      background: rgba(255,255,255,0.06);
+      color: #bbb;
+    }
+    .row { display:flex; gap:10px; }
+    .small { font-size:13px; color:var(--muted); margin-top:8px; }
+    .status {
+      padding:8px 10px;
+      border-radius:8px;
+      background: rgba(255,255,255,0.02);
+      font-size:13px;
+      color:var(--muted);
+      margin-bottom:10px;
+    }
+    .points{
+      margin-top:14px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+    .badge {
+      background: rgba(255,255,255,0.03);
+      padding:8px 12px;
+      border-radius:12px;
+      font-weight:700;
+      color:var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Monetag Rewarded Ads — Demo</h1>
+    <p>Zone ID: <strong>9817616</strong> · SDK: <code>show_9817616</code></p>
+
+    <div class="status" id="sdk-status">SDK status: <strong id="sdk-state">Checking...</strong></div>
+
+    <!-- Buttons -->
+    <button id="popup-btn" class="btn" disabled>Show Rewarded Popup (pop)</button>
+    <button id="inter-btn" class="btn" disabled>Show Rewarded Interstitial</button>
+
+    <div class="points">
+      <div class="small">Watched Ads: <span id="watched-count">0</span></div>
+      <div class="badge">Points: <span id="points">0.00</span></div>
+    </div>
+
+    <p class="small">Note: Buttons become active only after SDK is detected. If SDK fails to load, demo fallback will simulate ads so you can test reward flow.</p>
+  </div>
+
+  <script>
+    // CONFIG
+    const ZONE_FN = 'show_9817616'; // Monetag function name (from data-sdk)
+    const SDK_POLL_INTERVAL = 300; // ms
+    const SDK_POLL_TIMEOUT = 8000; // ms - give SDK up to 8s to appear
+    const POINTS_PER_AD = 0.50;
+
+    // UI
+    const sdkStateEl = document.getElementById('sdk-state');
+    const popupBtn = document.getElementById('popup-btn');
+    const interBtn = document.getElementById('inter-btn');
+    const watchedCountEl = document.getElementById('watched-count');
+    const pointsEl = document.getElementById('points');
+
+    // State
+    let sdkAvailable = false;
+    let watched = parseInt(localStorage.getItem('watched') || '0', 10);
+    let points = parseFloat(localStorage.getItem('points') || '0');
+
+    watchedCountEl.textContent = watched;
+    pointsEl.textContent = points.toFixed(2);
+
+    // Utility: enable/disable buttons
+    function setButtonsEnabled(enabled) {
+      popupBtn.disabled = !enabled;
+      interBtn.disabled = !enabled;
+      if (enabled) {
+        popupBtn.style.opacity = 1;
+        interBtn.style.opacity = 1;
+      }
+    }
+
+    // Check for SDK function existence
+    function checkSdkReady() {
+      return (typeof window[ZONE_FN] === 'function');
+    }
+
+    // Poll for SDK up to timeout, then fallback
+    function waitForSdk(timeout = SDK_POLL_TIMEOUT) {
+      const start = Date.now();
+      return new Promise((resolve) => {
+        function poll() {
+          if (checkSdkReady()) {
+            sdkAvailable = true;
+            sdkStateEl.textContent = 'Loaded ✓';
+            resolve(true);
+          } else if (Date.now() - start > timeout) {
+            sdkAvailable = false;
+            sdkStateEl.textContent = 'Not found — using fallback (demo)';
+            resolve(false);
+          } else {
+            sdkStateEl.textContent = 'Waiting for SDK...';
+            setTimeout(poll, SDK_POLL_INTERVAL);
+          }
+        }
+        poll();
+      });
+    }
+
+    // Reward handler (update UI + storage)
+    function rewardUser(amount) {
+      watched += 1;
+      points = parseFloat((points + amount).toFixed(2));
+      localStorage.setItem('watched', watched);
+      localStorage.setItem('points', points);
+      watchedCountEl.textContent = watched;
+      pointsEl.textContent = points.toFixed(2);
+    }
+
+    // Show Monetag calls with proper promise handling.
+    // If SDK not available, simulate a fake ad (2s wait) and then resolve to allow testing.
+    function callSdkPopup() {
+      if (sdkAvailable) {
+        try {
+          return window[ZONE_FN]('pop'); // returns a promise
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      } else {
+        // fallback simulated ad
+        return new Promise((res) => {
+          sdkStateEl.textContent = 'Simulating popup ad...';
+          setTimeout(() => {
+            sdkStateEl.textContent = 'Simulated popup finished';
+            res();
+          }, 2000);
+        });
+      }
+    }
+
+    function callSdkInterstitial() {
+      if (sdkAvailable) {
+        try {
+          return window[ZONE_FN](); // returns a promise
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      } else {
+        // fallback simulated ad
+        return new Promise((res) => {
+          sdkStateEl.textContent = 'Simulating interstitial ad...';
+          setTimeout(() => {
+            sdkStateEl.textContent = 'Simulated interstitial finished';
+            res();
+          }, 2500);
+        });
+      }
+    }
+
+    // Button handlers
+    async function onPopupClick() {
+      setButtonsEnabled(false);
+      sdkStateEl.textContent = 'Loading popup ad...';
+      try {
+        await callSdkPopup();
+        // monetag resolved -> reward user
+        rewardUser(POINTS_PER_AD);
+        sdkStateEl.textContent = 'Popup completed — reward given ✓';
+        alert('✅ Popup Ad Completed! You earned ' + POINTS_PER_AD + ' points.');
+      } catch (err) {
+        console.error('Popup ad error', err);
+        sdkStateEl.textContent = 'Popup failed or cancelled';
+        alert('⚠️ Popup ad failed or was closed. No reward.');
+      } finally {
+        setButtonsEnabled(true);
+      }
+    }
+
+    async function onInterClick() {
+      setButtonsEnabled(false);
+      sdkStateEl.textContent = 'Loading interstitial ad...';
+      try {
+        await callSdkInterstitial();
+        rewardUser(POINTS_PER_AD);
+        sdkStateEl.textContent = 'Interstitial completed — reward given ✓';
+        alert('✅ Interstitial Ad Completed! You earned ' + POINTS_PER_AD + ' points.');
+      } catch (err) {
+        console.error('Interstitial ad error', err);
+        sdkStateEl.textContent = 'Interstitial failed or cancelled';
+        alert('⚠️ Interstitial ad failed or was closed. No reward.');
+      } finally {
+        setButtonsEnabled(true);
+      }
+    }
+
+    // Attach handlers
+    popupBtn.addEventListener('click', onPopupClick);
+    interBtn.addEventListener('click', onInterClick);
+
+    // Start: wait for SDK then enable buttons accordingly
+    (async function init() {
+      setButtonsEnabled(false);
+      const ok = await waitForSdk();
+      // if SDK loaded, buttons enabled; if not, still enable (fallback) so testing possible
+      setButtonsEnabled(true);
+      if (ok) {
+        sdkStateEl.textContent = 'SDK loaded — ready to show ads ✓';
+      } else {
+        sdkStateEl.textContent = 'SDK not found — demo fallback active';
+      }
+    })();
+  </script>
+</body>
+  </html>
