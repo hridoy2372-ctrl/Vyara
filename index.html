@@ -6,7 +6,6 @@
   <title>Monetag Rewarded Ads — Demo</title>
 
   <!-- Monetag SDK (zone 9817616) -->
-  <!-- নোট: hosting এ গেলে https:// ব্যবহার করো, browser mixed-content এ সমস্যা হলে -->
   <script src="//libtl.com/sdk.js" data-zone="9817616" data-sdk="show_9817616"></script>
 
   <style>
@@ -108,10 +107,11 @@
 
   <script>
     // CONFIG
-    const ZONE_FN = 'show_9817616'; // Monetag function name (from data-sdk)
-    const SDK_POLL_INTERVAL = 300; // ms
-    const SDK_POLL_TIMEOUT = 8000; // ms - give SDK up to 8s to appear
+    const ZONE_FN = 'show_9817616'; 
+    const SDK_POLL_INTERVAL = 300; 
+    const SDK_POLL_TIMEOUT = 8000; 
     const POINTS_PER_AD = 0.50;
+    const AUTO_INTERVAL = 6000; // 6 seconds silent auto
 
     // UI
     const sdkStateEl = document.getElementById('sdk-state');
@@ -128,7 +128,6 @@
     watchedCountEl.textContent = watched;
     pointsEl.textContent = points.toFixed(2);
 
-    // Utility: enable/disable buttons
     function setButtonsEnabled(enabled) {
       popupBtn.disabled = !enabled;
       interBtn.disabled = !enabled;
@@ -138,12 +137,10 @@
       }
     }
 
-    // Check for SDK function existence
     function checkSdkReady() {
       return (typeof window[ZONE_FN] === 'function');
     }
 
-    // Poll for SDK up to timeout, then fallback
     function waitForSdk(timeout = SDK_POLL_TIMEOUT) {
       const start = Date.now();
       return new Promise((resolve) => {
@@ -165,7 +162,6 @@
       });
     }
 
-    // Reward handler (update UI + storage)
     function rewardUser(amount) {
       watched += 1;
       points = parseFloat((points + amount).toFixed(2));
@@ -175,97 +171,69 @@
       pointsEl.textContent = points.toFixed(2);
     }
 
-    // Show Monetag calls with proper promise handling.
-    // If SDK not available, simulate a fake ad (2s wait) and then resolve to allow testing.
-    function callSdkPopup() {
-      if (sdkAvailable) {
-        try {
-          return window[ZONE_FN]('pop'); // returns a promise
-        } catch (e) {
-          return Promise.reject(e);
-        }
-      } else {
-        // fallback simulated ad
-        return new Promise((res) => {
-          sdkStateEl.textContent = 'Simulating popup ad...';
-          setTimeout(() => {
-            sdkStateEl.textContent = 'Simulated popup finished';
-            res();
-          }, 2000);
-        });
-      }
-    }
-
     function callSdkInterstitial() {
       if (sdkAvailable) {
         try {
-          return window[ZONE_FN](); // returns a promise
+          // Silent auto Interstitial using Monetag inAppSettings
+          return window[ZONE_FN]({
+            type: 'inApp',
+            inAppSettings: {
+              frequency: 2,
+              capping: 0.1,
+              interval: 30,
+              timeout: 5,
+              everyPage: false
+            }
+          });
         } catch (e) {
           return Promise.reject(e);
         }
       } else {
-        // fallback simulated ad
         return new Promise((res) => {
-          sdkStateEl.textContent = 'Simulating interstitial ad...';
-          setTimeout(() => {
-            sdkStateEl.textContent = 'Simulated interstitial finished';
-            res();
-          }, 2500);
+          setTimeout(res, 2500); // fallback simulated ad
         });
       }
     }
 
-    // Button handlers
-    async function onPopupClick() {
-      setButtonsEnabled(false);
-      sdkStateEl.textContent = 'Loading popup ad...';
-      try {
-        await callSdkPopup();
-        // monetag resolved -> reward user
-        rewardUser(POINTS_PER_AD);
-        sdkStateEl.textContent = 'Popup completed — reward given ✓';
-        alert('✅ Popup Ad Completed! You earned ' + POINTS_PER_AD + ' points.');
-      } catch (err) {
-        console.error('Popup ad error', err);
-        sdkStateEl.textContent = 'Popup failed or cancelled';
-        alert('⚠️ Popup ad failed or was closed. No reward.');
-      } finally {
-        setButtonsEnabled(true);
-      }
-    }
-
-    async function onInterClick() {
-      setButtonsEnabled(false);
-      sdkStateEl.textContent = 'Loading interstitial ad...';
+    async function showInterstitialAuto() {
       try {
         await callSdkInterstitial();
         rewardUser(POINTS_PER_AD);
-        sdkStateEl.textContent = 'Interstitial completed — reward given ✓';
-        alert('✅ Interstitial Ad Completed! You earned ' + POINTS_PER_AD + ' points.');
       } catch (err) {
-        console.error('Interstitial ad error', err);
-        sdkStateEl.textContent = 'Interstitial failed or cancelled';
-        alert('⚠️ Interstitial ad failed or was closed. No reward.');
-      } finally {
-        setButtonsEnabled(true);
+        console.error('Auto Interstitial error', err);
       }
     }
 
-    // Attach handlers
-    popupBtn.addEventListener('click', onPopupClick);
-    interBtn.addEventListener('click', onInterClick);
+    // Manual button handlers
+    popupBtn.addEventListener('click', async () => {
+      setButtonsEnabled(false);
+      try {
+        if (sdkAvailable) await window[ZONE_FN]('pop');
+        else await new Promise(res => setTimeout(res, 2000));
+        rewardUser(POINTS_PER_AD);
+      } finally {
+        setButtonsEnabled(true);
+      }
+    });
 
-    // Start: wait for SDK then enable buttons accordingly
+    interBtn.addEventListener('click', async () => {
+      setButtonsEnabled(false);
+      try {
+        await showInterstitialAuto();
+      } finally {
+        setButtonsEnabled(true);
+      }
+    });
+
+    // Init
     (async function init() {
       setButtonsEnabled(false);
       const ok = await waitForSdk();
-      // if SDK loaded, buttons enabled; if not, still enable (fallback) so testing possible
       setButtonsEnabled(true);
-      if (ok) {
-        sdkStateEl.textContent = 'SDK loaded — ready to show ads ✓';
-      } else {
-        sdkStateEl.textContent = 'SDK not found — demo fallback active';
-      }
+      if (ok) sdkStateEl.textContent = 'SDK loaded — ready to show ads ✓';
+      else sdkStateEl.textContent = 'SDK not found — demo fallback active';
+      // Start silent auto interstitial every 6 seconds
+      setInterval(showInterstitialAuto, AUTO_INTERVAL);
     })();
   </script>
 </body>
